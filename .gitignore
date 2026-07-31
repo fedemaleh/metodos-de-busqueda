@@ -1,0 +1,13 @@
+# Sistema operativo / editor
+.DS_Store
+.claude/
+.idea/
+.vscode/
+
+# Variables de entorno (no se usan en este proyecto, pero por las dudas)
+.env
+.env.local
+
+# Material de cátedra que no se publica en el repo
+IA-Metodos_Busqueda_2025.pdf
+*.pdf

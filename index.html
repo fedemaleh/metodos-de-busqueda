@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Métodos de Búsqueda — Simulador Interactivo</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <a href="https://grupogemis.com.ar/gemiswp/" target="_blank" rel="noopener noreferrer" class="brand-logo-link" title="Grupo Gemis">
+      <img src="logo.png" alt="Grupo Gemis" class="brand-logo" />
+    </a>
+    <div>
+      <h1>Métodos de Búsqueda</h1>
+      <span class="subtitle">Simulador interactivo — UTN.BA / IA 2026 · <a href="https://grupogemis.com.ar/gemiswp/" target="_blank" rel="noopener noreferrer">Grupo Gemis</a></span>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="sim">Simulación</button>
+      <button class="tab-btn" data-tab="builder">🛠️ Diseñador de árbol</button>
+    </div>
+
+    <div id="simPanel">
+      <section class="algo-group">
+        <h2>Sin información del dominio <span class="badge blind">ciega</span></h2>
+        <button class="algo-btn" data-algo="bfs">Primero en Amplitud</button>
+        <button class="algo-btn" data-algo="dfs">Primero en Profundidad</button>
+        <button class="algo-btn" data-algo="genprueba">Generación y Prueba</button>
+        <button class="algo-btn" data-algo="bidireccional">Bidireccional</button>
+      </section>
+
+      <section class="algo-group">
+        <h2>Con información del dominio <span class="badge heuristic">heurística</span></h2>
+        <button class="algo-btn" data-algo="escaladaSimple">Escalada Simple</button>
+        <button class="algo-btn" data-algo="escaladaMaxima">Escalada por Máxima Pendiente</button>
+        <button class="algo-btn" data-algo="bestFirst">Primero el Mejor</button>
+        <button class="algo-btn" data-algo="beam">Beam Search</button>
+        <button class="algo-btn" data-algo="astar">A*</button>
+      </section>
+
+      <section class="params" id="params"></section>
+
+      <section class="explain">
+        <h3 id="explainTitle">Elegí un método</h3>
+        <p id="explainText">Seleccioná un algoritmo de la lista para ver su explicación y correrlo paso a paso sobre el árbol elegido.</p>
+        <ul id="explainBullets"></ul>
+      </section>
+    </div>
+
+    <div id="builderPanel" style="display:none;">
+      <section class="algo-group">
+        <h2>Diseñador de árbol</h2>
+        <p class="hint">Armá tu propio árbol de búsqueda: agregá nodos, elegí su padre, el costo de la arista y su heurística. También podés editar los valores directamente en la tabla.</p>
+      </section>
+
+      <section class="algo-group">
+        <h2>Partir de un escenario conocido</h2>
+        <p class="hint">Útil en clase: cargá uno de los árboles predefinidos acá y modificalo en el momento para responder una pregunta.</p>
+        <select id="builderPresetSelect"></select>
+        <button id="builderLoadPreset" class="secondary-btn" style="margin-top:8px;">Cargar en el diseñador</button>
+      </section>
+
+      <section class="params" id="builderForm"></section>
+      <section class="algo-group">
+        <h2>Nodos del árbol</h2>
+        <div id="builderList"></div>
+      </section>
+      <section class="builder-actions">
+        <button id="bReset" class="secondary-btn">Reiniciar diseño</button>
+        <button id="bUse" class="primary-btn" disabled>Usar este árbol para simular</button>
+      </section>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <div class="scenario-bar">
+      <label for="scenarioSelect">Escenario</label>
+      <select id="scenarioSelect"></select>
+      <span class="scenario-desc" id="scenarioDesc"></span>
+    </div>
+
+    <div class="tree-wrap">
+      <svg id="treeSvg" viewBox="0 0 760 560" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="legend">
+        <span><i class="dot unvisited"></i> Sin visitar</span>
+        <span><i class="dot start"></i> Actual</span>
+        <span><i class="dot open"></i> Abierto</span>
+        <span><i class="dot closed"></i> Cerrado</span>
+        <span><i class="dot solution"></i> Solución</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="btnReset" title="Reiniciar">⏮</button>
+      <button id="btnPrev" title="Paso anterior">◀</button>
+      <button id="btnPlay" title="Reproducir / Pausar">▶</button>
+      <button id="btnNext" title="Paso siguiente">▶|</button>
+      <label class="speed">
+        Velocidad
+        <input type="range" id="speed" min="200" max="2000" step="100" value="900" />
+      </label>
+      <span class="step-indicator" id="stepIndicator">Paso 0 / 0</span>
+    </div>
+
+    <div class="table-wrap">
+      <table id="stepsTable">
+        <thead>
+          <tr><th>Paso</th><th>Nodo actual</th><th>¿Es solución?</th><th>Lista de abiertos</th><th>Lista de cerrados</th><th>Mensaje</th></tr>
+        </thead>
+        <tbody id="stepsBody"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<footer class="footer">
+  <a href="https://grupogemis.com.ar/gemiswp/" target="_blank" rel="noopener noreferrer">Grupo Gemis</a> · UTN.BA / UTN FRLP — Métodos de Búsqueda 2026
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
