@@ -6,8 +6,6 @@ paso a paso sobre un árbol, mirá cómo se llenan las listas de nodos abiertos
 y cerrados, y probá tus propios ejercicios.
 
 👉 **[Abrir el simulador](https://fedemaleh.github.io/metodos-de-busqueda/)**
-*(si el link todavía no funciona, activá GitHub Pages en Settings → Pages →
-Branch `main` / carpeta `/ (root)`)*
 
 ## ¿Qué podés hacer acá?
 
