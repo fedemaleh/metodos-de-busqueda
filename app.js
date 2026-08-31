@@ -117,6 +117,30 @@ const PRESETS = {
       goals: ['Z'],
     },
   },
+
+  classicAL: {
+    name: 'Ejercicio 5',
+    description: 'Árbol clásico de la bibliografía con dos nodos meta (J y L, ambos h=0) alcanzables por caminos distintos: J cuelga de E y de G, y L cuelga de I y de K. Sin costos diferenciados (todas las aristas cuestan 1), sirve para comparar cómo cada método de búsqueda ciega y heurística elige entre las dos metas y en qué orden explora las ramas B/C.',
+    graph: {
+      root: 'A',
+      nodes: {
+        A: { h: 12 }, B: { h: 7 }, C: { h: 6 }, D: { h: 3 }, E: { h: 4 },
+        F: { h: 9 }, G: { h: 10 }, H: { h: 8 }, I: { h: 1 }, J: { h: 0 },
+        K: { h: 2 }, L: { h: 0 },
+      },
+      edges: [
+        { from: 'A', to: 'B', cost: 1 }, { from: 'A', to: 'C', cost: 1 },
+        { from: 'B', to: 'D', cost: 1 }, { from: 'B', to: 'E', cost: 1 },
+        { from: 'C', to: 'F', cost: 1 }, { from: 'C', to: 'G', cost: 1 }, { from: 'C', to: 'H', cost: 1 },
+        { from: 'E', to: 'I', cost: 1 }, { from: 'E', to: 'J', cost: 1 },
+        { from: 'G', to: 'J', cost: 1 },
+        { from: 'H', to: 'K', cost: 1 },
+        { from: 'I', to: 'L', cost: 1 },
+        { from: 'K', to: 'L', cost: 1 },
+      ],
+      goals: ['J', 'L'],
+    },
+  },
 };
 
 /* =========================================================================
@@ -195,8 +219,18 @@ function layout(graph) {
     seen.add(n);
     const kids = edgesFrom(graph, n).map(e => e.to);
     let x;
-    if (!kids.length) x = leafCounter++;
-    else x = kids.reduce((s, k) => s + recurse(k), 0) / kids.length;
+    if (!kids.length) {
+      x = leafCounter++;
+    } else {
+      // Un hijo "no fresco" ya fue posicionado por otra rama (convergencia
+      // en un DAG, p.ej. dos padres que apuntan al mismo nodo meta). Si este
+      // nodo promediara esa posición ajena, quedaría arrastrado lejos de sus
+      // hermanos reales y cruzaría ramas que no deberían cruzarse.
+      const freshKids = kids.filter(k => xrank[k] === undefined);
+      x = freshKids.length
+        ? freshKids.reduce((s, k) => s + recurse(k), 0) / freshKids.length
+        : leafCounter++;
+    }
     xrank[n] = x;
     return x;
   }
@@ -212,6 +246,19 @@ function layout(graph) {
       y: topMargin + depthOf[n] * levelGap,
     };
   });
+
+  // Dos nodos distintos pueden heredar el mismo xrank cuando ambos son "hijo
+  // único" de un mismo nodo compartido más abajo (convergencia en un DAG).
+  // Sin este ajuste quedarían dibujados exactamente superpuestos.
+  const byDepth = {};
+  Object.keys(graph.nodes).forEach(n => (byDepth[depthOf[n]] = byDepth[depthOf[n]] || []).push(n));
+  Object.values(byDepth).forEach(list => {
+    list.sort((a, b) => pos[a].x - pos[b].x || a.localeCompare(b));
+    for (let i = 1; i < list.length; i++) {
+      if (pos[list[i]].x - pos[list[i - 1]].x < 90) pos[list[i]].x = pos[list[i - 1]].x + 90;
+    }
+  });
+
   return { pos, depthOf, maxDepth, height: topMargin + maxDepth * levelGap + 70 };
 }
 
