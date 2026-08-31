@@ -120,7 +120,8 @@ const PRESETS = {
 
   classicAL: {
     name: 'Ejercicio 5',
-    description: 'Árbol clásico de la bibliografía con dos nodos meta (J y L, ambos h=0) alcanzables por caminos distintos: J cuelga de E y de G, y L cuelga de I y de K. Sin costos diferenciados (todas las aristas cuestan 1), sirve para comparar cómo cada método de búsqueda ciega y heurística elige entre las dos metas y en qué orden explora las ramas B/C.',
+    description: 'Árbol clásico de la bibliografía con dos nodos meta (J y L, ambos h=0) alcanzables por caminos distintos: J cuelga de E y de G, y L cuelga de I y de K. Sin costos diferenciados (todas las aristas cuestan 1), sirve para comparar cómo cada método de búsqueda ciega y heurística elige entre las dos metas y en qué orden explora las ramas B/C. El enunciado de este ejercicio considera más deseable el valor heurístico más bajo (h=0 en las metas), al revés de la convención general de la cátedra.',
+    heurMode: 'min',
     graph: {
       root: 'A',
       nodes: {
@@ -160,6 +161,7 @@ const state = {
   goal: null,
   beamWidth: 2,
   costMode: 'real',
+  heurMode: 'max',
   builder: { nodes: {}, edges: [], goals: [], root: null },
 };
 
@@ -369,6 +371,10 @@ function runBlindTraversal(graph, direction, mode) {
     const isSolution = graph.goals.includes(cur.node);
     if (isSolution) solutionsFound.push(cur.node);
 
+    const kids = children(graph, cur.node, direction);
+    const newEntries = kids.map(k => ({ node: k, parent: cur.node }));
+    open = open.concat(newEntries);
+
     steps.push({
       current: cur.node,
       isSolution,
@@ -378,10 +384,6 @@ function runBlindTraversal(graph, direction, mode) {
     });
 
     if (isSolution && stopAtFirst) break;
-
-    const kids = children(graph, cur.node, direction);
-    const newEntries = kids.map(k => ({ node: k, parent: cur.node }));
-    open = open.concat(newEntries);
   }
 
   if (!stopAtFirst) {
@@ -425,20 +427,26 @@ function runBidireccional(graph, direction, goal) {
       const n = fwdOpen.pop();
       if (!fwdClosed.includes(n)) {
         fwdClosed.push(n);
+        const metNow = bwdClosed.includes(n);
+        if (!metNow) {
+          const kids = children(graph, n, direction);
+          fwdOpen = fwdOpen.concat(kids.filter(k => !fwdClosed.includes(k)));
+        }
         pushStep(`Adelante (profundidad) visita ${n}.`);
-        if (bwdClosed.includes(n)) { meet = n; pushStep(`¡Encuentro en ${n}! Las dos búsquedas se tocan.`); break; }
-        const kids = children(graph, n, direction);
-        fwdOpen = fwdOpen.concat(kids.filter(k => !fwdClosed.includes(k)));
+        if (metNow) { meet = n; pushStep(`¡Encuentro en ${n}! Las dos búsquedas se tocan.`); break; }
       }
     }
     if (bwdOpen.length) {
       const n = bwdOpen.shift();
       if (!bwdClosed.includes(n)) {
         bwdClosed.push(n);
+        const metNow = fwdClosed.includes(n);
+        if (!metNow) {
+          const preds = predecessors(graph, n);
+          bwdOpen = bwdOpen.concat(preds.filter(p => !bwdClosed.includes(p)));
+        }
         pushStep(`Atrás (amplitud) visita ${n}.`);
-        if (fwdClosed.includes(n)) { meet = n; pushStep(`¡Encuentro en ${n}! Las dos búsquedas se tocan.`); break; }
-        const preds = predecessors(graph, n);
-        bwdOpen = bwdOpen.concat(preds.filter(p => !bwdClosed.includes(p)));
+        if (metNow) { meet = n; pushStep(`¡Encuentro en ${n}! Las dos búsquedas se tocan.`); break; }
       }
     }
   }
@@ -446,10 +454,11 @@ function runBidireccional(graph, direction, goal) {
   return steps;
 }
 
-function runEscalada(graph, direction, variant) {
+function runEscalada(graph, direction, variant, heurMode) {
   const steps = [];
   let current = graph.root;
   const path = [graph.root];
+  const isBetter = heurMode === 'min' ? (a, b) => a < b : (a, b) => a > b;
 
   while (true) {
     const isSolution = graph.goals.includes(current);
@@ -470,10 +479,10 @@ function runEscalada(graph, direction, variant) {
 
     let next = null;
     if (variant === 'simple') {
-      next = kids.find(k => graph.nodes[k].h > graph.nodes[current].h) || null;
+      next = kids.find(k => isBetter(graph.nodes[k].h, graph.nodes[current].h)) || null;
     } else {
-      const best = kids.reduce((a, b) => (graph.nodes[b].h > graph.nodes[a].h ? b : a));
-      if (graph.nodes[best].h > graph.nodes[current].h) next = best;
+      const best = kids.reduce((a, b) => (isBetter(graph.nodes[b].h, graph.nodes[a].h) ? b : a));
+      if (isBetter(graph.nodes[best].h, graph.nodes[current].h)) next = best;
     }
 
     if (!next) {
@@ -490,21 +499,37 @@ function runPriorityFirst(graph, direction, opts) {
   const steps = [];
   let open = [{ node: graph.root, g: 0 }];
   const closed = [];
+  const minIsBetter = opts.heurMode === 'min';
 
   function score(entry) {
-    if (opts.useAstar) return graph.nodes[entry.node].h - entry.g;
-    return graph.nodes[entry.node].h;
+    const h = graph.nodes[entry.node].h;
+    if (opts.useAstar) return minIsBetter ? h + entry.g : h - entry.g;
+    return h;
   }
 
   let guard = 0;
   while (open.length && guard < 500) {
     guard++;
-    open.sort((a, b) => score(b) - score(a));
+    open.sort((a, b) => (minIsBetter ? score(a) - score(b) : score(b) - score(a)));
     if (opts.beamWidth) open = open.slice(0, opts.beamWidth);
 
     const cur = open.shift();
     closed.push(cur.node);
     const isSolution = graph.goals.includes(cur.node);
+
+    if (!isSolution) {
+      const kids = children(graph, cur.node, direction).filter(k => !closed.includes(k));
+      for (const k of kids) {
+        const g = cur.g + edgeCost(graph, cur.node, k, opts.useUnitCost);
+        const already = open.find(o => o.node === k);
+        if (!already || g < already.g) {
+          if (already) already.g = g;
+          else open.push({ node: k, g });
+        }
+      }
+    }
+
+    open.sort((a, b) => (minIsBetter ? score(a) - score(b) : score(b) - score(a)));
 
     steps.push({
       current: cur.node,
@@ -515,16 +540,6 @@ function runPriorityFirst(graph, direction, opts) {
     });
 
     if (isSolution) break;
-
-    const kids = children(graph, cur.node, direction).filter(k => !closed.includes(k));
-    for (const k of kids) {
-      const g = cur.g + edgeCost(graph, cur.node, k, opts.useUnitCost);
-      const already = open.find(o => o.node === k);
-      if (!already || g < already.g) {
-        if (already) already.g = g;
-        else open.push({ node: k, g });
-      }
-    }
   }
   if (!open.length && !(steps[steps.length - 1] && steps[steps.length - 1].isSolution)) {
     steps.push({ current: closed[closed.length - 1] || null, isSolution: false, open: [], closed: closed.slice(), message: 'La lista de abiertos se vació sin encontrar el estado final.', failed: true });
@@ -738,6 +753,7 @@ function loadPreset(id) {
   state.presetId = id;
   state.graph = cloneGraph(preset.graph);
   state.goal = state.graph.goals[0] || null;
+  state.heurMode = preset.heurMode || 'max';
   buildSvgSkeleton();
   renderScenarioSelect();
   if (state.algo) runAlgo(); else { showHeuristics(false); showCosts(false); renderTree(null); }
@@ -775,8 +791,17 @@ function renderParams() {
       </select>
     </label>`;
 
+  const heurSelect = `
+    <label>Heurística más deseable
+      <select id="paramHeur">
+        <option value="max" ${state.heurMode === 'max' ? 'selected' : ''}>Valor más alto</option>
+        <option value="min" ${state.heurMode === 'min' ? 'selected' : ''}>Valor más bajo</option>
+      </select>
+    </label>`;
+
   if (['bfs', 'dfs', 'genprueba', 'bidireccional', 'escaladaSimple', 'escaladaMaxima', 'bestFirst', 'beam', 'astar'].includes(algo)) html += directionSelect;
   if (algo === 'bidireccional') html += goalSelect;
+  if (['escaladaSimple', 'escaladaMaxima', 'bestFirst', 'beam', 'astar'].includes(algo)) html += heurSelect;
 
   if (algo === 'beam') {
     html += `<label>Ancho del haz (N)
@@ -798,6 +823,7 @@ function renderParams() {
   const pg = document.getElementById('paramGoal'); if (pg) pg.addEventListener('change', e => { state.goal = e.target.value; runAlgo(); });
   const pb = document.getElementById('paramBeam'); if (pb) pb.addEventListener('change', e => { state.beamWidth = Math.max(1, parseInt(e.target.value) || 1); runAlgo(); });
   const pc = document.getElementById('paramCost'); if (pc) pc.addEventListener('change', e => { state.costMode = e.target.value; runAlgo(); });
+  const ph = document.getElementById('paramHeur'); if (ph) ph.addEventListener('change', e => { state.heurMode = e.target.value; runAlgo(); });
 }
 
 function renderStepIndicator() {
@@ -844,11 +870,11 @@ function runAlgo() {
     case 'dfs': state.steps = runBlindTraversal(graph, state.direction, 'dfs'); break;
     case 'genprueba': state.steps = runBlindTraversal(graph, state.direction, 'genprueba'); break;
     case 'bidireccional': state.steps = runBidireccional(graph, state.direction, state.goal); break;
-    case 'escaladaSimple': state.steps = runEscalada(graph, state.direction, 'simple'); break;
-    case 'escaladaMaxima': state.steps = runEscalada(graph, state.direction, 'maxima'); break;
-    case 'bestFirst': state.steps = runPriorityFirst(graph, state.direction, { beamWidth: null, useAstar: false }); break;
-    case 'beam': state.steps = runPriorityFirst(graph, state.direction, { beamWidth: state.beamWidth, useAstar: false }); break;
-    case 'astar': state.steps = runPriorityFirst(graph, state.direction, { beamWidth: null, useAstar: true, useUnitCost: state.costMode === 'unit' }); break;
+    case 'escaladaSimple': state.steps = runEscalada(graph, state.direction, 'simple', state.heurMode); break;
+    case 'escaladaMaxima': state.steps = runEscalada(graph, state.direction, 'maxima', state.heurMode); break;
+    case 'bestFirst': state.steps = runPriorityFirst(graph, state.direction, { beamWidth: null, useAstar: false, heurMode: state.heurMode }); break;
+    case 'beam': state.steps = runPriorityFirst(graph, state.direction, { beamWidth: state.beamWidth, useAstar: false, heurMode: state.heurMode }); break;
+    case 'astar': state.steps = runPriorityFirst(graph, state.direction, { beamWidth: null, useAstar: true, useUnitCost: state.costMode === 'unit', heurMode: state.heurMode }); break;
     default: state.steps = [];
   }
   state.index = state.steps.length ? 0 : -1;
