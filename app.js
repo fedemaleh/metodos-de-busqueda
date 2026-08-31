@@ -506,12 +506,14 @@ function runPriorityFirst(graph, direction, opts) {
     if (opts.useAstar) return minIsBetter ? h + entry.g : h - entry.g;
     return h;
   }
+  function sortOpen(list) {
+    return list.sort((a, b) => (minIsBetter ? score(a) - score(b) : score(b) - score(a)));
+  }
 
   let guard = 0;
   while (open.length && guard < 500) {
     guard++;
-    open.sort((a, b) => (minIsBetter ? score(a) - score(b) : score(b) - score(a)));
-    if (opts.beamWidth) open = open.slice(0, opts.beamWidth);
+    sortOpen(open);
 
     const cur = open.shift();
     closed.push(cur.node);
@@ -529,12 +531,21 @@ function runPriorityFirst(graph, direction, opts) {
       }
     }
 
-    open.sort((a, b) => (minIsBetter ? score(a) - score(b) : score(b) - score(a)));
+    sortOpen(open);
+    // El ancho del haz se aplica recién acá, sobre la lista ya completa con
+    // los hijos nuevos: podarla antes de expandir (como se hacía antes)
+    // dejaba entrar más candidatos de los debidos al mostrar el paso.
+    let pruned = [];
+    if (opts.beamWidth && open.length > opts.beamWidth) {
+      pruned = open.slice(opts.beamWidth);
+      open = open.slice(0, opts.beamWidth);
+    }
 
     steps.push({
       current: cur.node,
       isSolution,
       open: open.map(o => ({ node: o.node, score: score(o) })),
+      pruned: pruned.map(o => ({ node: o.node, score: score(o) })),
       closed: closed.slice(),
       message: isSolution ? `${cur.node} es un estado solución.` : `Se expande ${cur.node} (valor ${score(cur)}).`,
     });
@@ -833,7 +844,9 @@ function renderStepIndicator() {
 function renderTable() {
   const body = document.getElementById('stepsBody');
   body.innerHTML = state.steps.slice(0, state.index + 1).map((s, i) => {
-    const openStr = s.open.length ? s.open.map(o => fmtScore(o.node, o.score)).join(', ') : '-';
+    const openParts = s.open.map(o => fmtScore(o.node, o.score))
+      .concat((s.pruned || []).map(o => `<s title="podado por el ancho del haz">${fmtScore(o.node, o.score)}</s>`));
+    const openStr = openParts.length ? openParts.join(', ') : '-';
     const closedStr = s.closed.length ? s.closed.join(', ') : '-';
     const rowClass = i === state.index ? 'current-row' : '';
     const solClass = s.isSolution ? 'solution-row' : '';
