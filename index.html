@@ -66,6 +66,18 @@
         <button id="builderLoadPreset" class="secondary-btn" style="margin-top:8px;">Cargar en el diseñador</button>
       </section>
 
+      <section class="algo-group">
+        <h2>Compartir ejercicios</h2>
+        <p class="hint">Exportá el árbol del diseñador como archivo .json o como link, e importá el que te pasen. Al abrir un link compartido, el árbol se carga directo en la simulación.</p>
+        <input type="text" id="ioName" class="io-name" placeholder="Nombre del ejercicio (opcional)" maxlength="60" />
+        <div class="io-buttons">
+          <button id="ioExport" class="secondary-btn">⬇ Exportar .json</button>
+          <button id="ioImport" class="secondary-btn">⬆ Importar .json</button>
+        </div>
+        <button id="ioLink" class="secondary-btn">🔗 Copiar link para compartir</button>
+        <input type="file" id="ioFile" accept=".json,application/json" hidden />
+      </section>
+
       <section class="params" id="builderForm"></section>
       <section class="algo-group">
         <h2>Nodos del árbol</h2>
@@ -122,6 +134,19 @@
 <footer class="footer">
   <a href="https://grupogemis.com.ar/gemiswp/" target="_blank" rel="noopener noreferrer">Grupo Gemis</a> · UTN.BA / UTN FRLP — Métodos de Búsqueda 2026
 </footer>
+
+<dialog id="appDialog" class="app-dialog" aria-labelledby="appDialogTitle">
+  <form method="dialog" class="app-dialog-body">
+    <h3 id="appDialogTitle" class="app-dialog-title"></h3>
+    <div id="appDialogContent" class="app-dialog-content"></div>
+    <div class="app-dialog-actions">
+      <button value="cancel" id="appDialogCancel" class="dialog-btn secondary">Cancelar</button>
+      <button value="confirm" id="appDialogConfirm" class="dialog-btn primary">Aceptar</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toastHost" class="toast-host" aria-live="polite"></div>
 
 <script src="app.js"></script>
 </body>

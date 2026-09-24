@@ -162,8 +162,13 @@ const state = {
   beamWidth: 2,
   costMode: 'real',
   heurMode: 'max',
-  builder: { nodes: {}, edges: [], goals: [], root: null },
+  customName: '',
+  builder: emptyBuilder(),
 };
+
+function emptyBuilder() {
+  return { nodes: {}, edges: [], goals: [], root: null, name: '', heurMode: 'max' };
+}
 
 function currentGraph() {
   return state.graph;
@@ -365,15 +370,20 @@ function runBlindTraversal(graph, direction, mode) {
   const steps = [];
   const solutionsFound = [];
 
+  // El frente de la lista de abiertos es siempre el próximo nodo a expandir.
+  // Cola (BFS): los hijos van al final. Pila (DFS): los hijos van al frente
+  // en el sentido elegido, así el primero de ese sentido es el que se expande
+  // (con open.pop() sobre hijos apilados en orden se expandía el último y el
+  // sentido quedaba invertido respecto de la PPT).
   while (open.length) {
-    const cur = isFifo ? open.shift() : open.pop();
+    const cur = open.shift();
     closed.push(cur.node);
     const isSolution = graph.goals.includes(cur.node);
     if (isSolution) solutionsFound.push(cur.node);
 
     const kids = children(graph, cur.node, direction);
     const newEntries = kids.map(k => ({ node: k, parent: cur.node }));
-    open = open.concat(newEntries);
+    open = isFifo ? open.concat(newEntries) : newEntries.concat(open);
 
     steps.push({
       current: cur.node,
@@ -424,13 +434,14 @@ function runBidireccional(graph, direction, goal) {
   while ((fwdOpen.length || bwdOpen.length) && !meet && guard < 300) {
     guard++;
     if (fwdOpen.length) {
-      const n = fwdOpen.pop();
+      const n = fwdOpen.shift();
       if (!fwdClosed.includes(n)) {
         fwdClosed.push(n);
         const metNow = bwdClosed.includes(n);
         if (!metNow) {
+          // Pila con el tope al frente (ver runBlindTraversal).
           const kids = children(graph, n, direction);
-          fwdOpen = fwdOpen.concat(kids.filter(k => !fwdClosed.includes(k)));
+          fwdOpen = kids.filter(k => !fwdClosed.includes(k)).concat(fwdOpen);
         }
         pushStep(`Adelante (profundidad) visita ${n}.`);
         if (metNow) { meet = n; pushStep(`¡Encuentro en ${n}! Las dos búsquedas se tocan.`); break; }
@@ -752,15 +763,16 @@ function renderScenarioSelect() {
   const isCustom = !state.presetId;
   sel.innerHTML = Object.entries(PRESETS)
     .map(([id, p]) => `<option value="${id}" ${state.presetId === id ? 'selected' : ''}>${p.name}</option>`)
-    .join('') + (isCustom ? `<option value="custom" selected>Mi árbol personalizado</option>` : '');
+    .join('') + (isCustom ? `<option value="custom" selected>${escapeHtml(state.customName || 'Mi árbol personalizado')}</option>` : '');
   document.getElementById('scenarioDesc').textContent = isCustom
-    ? 'Árbol armado en el Diseñador de árbol.'
+    ? 'Árbol armado en el Diseñador de árbol o importado.'
     : PRESETS[state.presetId].description;
 }
 
 function loadPreset(id) {
   const preset = PRESETS[id];
   if (!preset) return;
+  clearShareHash();
   state.presetId = id;
   state.graph = cloneGraph(preset.graph);
   state.goal = state.graph.goals[0] || null;
@@ -922,6 +934,53 @@ function prevStep() { pause(); if (state.index > 0) { state.index--; renderAll()
 function resetSteps() { pause(); state.index = state.steps.length ? 0 : -1; renderAll(); }
 
 /* =========================================================================
+   DIÁLOGOS Y AVISOS — reemplazan alert/confirm/prompt del navegador por
+   componentes con el estilo de la app. El contenido se arma con nodos DOM
+   (textContent), nunca con innerHTML, porque puede incluir datos importados.
+   ========================================================================= */
+
+function el(tag, props = {}, children = []) {
+  const node = Object.assign(document.createElement(tag), props);
+  [].concat(children).forEach(child => node.append(child));
+  return node;
+}
+
+const TOAST_ICONS = { info: 'i', success: '✓', error: '!' };
+
+function showToast(message, variant = 'info') {
+  const toast = el('div', { className: `toast ${variant}` }, [
+    el('span', { className: 'toast-icon', textContent: TOAST_ICONS[variant] || TOAST_ICONS.info }),
+    el('span', { textContent: message }),
+  ]);
+  toast.setAttribute('role', variant === 'error' ? 'alert' : 'status');
+  document.getElementById('toastHost').append(toast);
+  setTimeout(() => {
+    toast.classList.add('leaving');
+    setTimeout(() => toast.remove(), 200);
+  }, variant === 'error' ? 5000 : 3200);
+}
+
+/* Abre el diálogo modal y resuelve true si se confirma (false con Cancelar
+   o Esc). Con cancelLabel = null queda un único botón. */
+function openDialog({ title, content, confirmLabel = 'Aceptar', cancelLabel = 'Cancelar', focus }) {
+  const dialog = document.getElementById('appDialog');
+  const cancelBtn = document.getElementById('appDialogCancel');
+  const confirmBtn = document.getElementById('appDialogConfirm');
+  document.getElementById('appDialogTitle').textContent = title;
+  document.getElementById('appDialogContent').replaceChildren(...[].concat(content));
+  confirmBtn.textContent = confirmLabel;
+  cancelBtn.textContent = cancelLabel || '';
+  cancelBtn.hidden = !cancelLabel;
+
+  return new Promise(resolve => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true });
+    dialog.returnValue = '';
+    dialog.showModal();
+    (focus || confirmBtn).focus();
+  });
+}
+
+/* =========================================================================
    DISEÑADOR DE ÁRBOL
    ========================================================================= */
 
@@ -948,7 +1007,8 @@ function renderBuilderForm() {
     </label>
     <label>Costo de la arista (padre → nuevo nodo)
       <input type="number" id="bCost" value="1" min="0" step="1" />
-    </label>` : `<p class="hint">Este va a ser el nodo raíz del árbol.</p>`}
+    </label>
+    <p class="hint">¿Un nodo con más de un padre (como L en el árbol clásico)? Escribí el nombre de un nodo que ya existe y elegí el padre nuevo.</p>` : `<p class="hint">Este va a ser el nodo raíz del árbol.</p>`}
     <label>Valor heurístico (h)
       <input type="number" id="bH" value="0" step="1" />
     </label>
@@ -962,7 +1022,8 @@ function renderBuilderForm() {
   document.getElementById('bAdd').addEventListener('click', () => {
     const name = document.getElementById('bName').value.trim();
     if (!name) return;
-    if (b.nodes[name]) { alert('Ya existe un nodo con ese nombre.'); return; }
+    if (b.nodes[name]) { addExtraParent(name); return; }
+    if (!NODE_NAME_RE.test(name)) { showToast(NODE_NAME_HINT, 'error'); return; }
     const h = parseFloat(document.getElementById('bH').value) || 0;
     const isGoal = document.getElementById('bGoal').checked;
 
@@ -979,6 +1040,55 @@ function renderBuilderForm() {
   });
 }
 
+/* Escribir el nombre de un nodo que ya existe en el formulario no crea uno
+   nuevo: agrega una arista desde el padre elegido, así se pueden armar nodos
+   con más de un padre (L en el clásico, J y L en el Ejercicio 5). */
+async function addExtraParent(name) {
+  const b = state.builder;
+  const parentSelect = document.getElementById('bParent');
+  if (!parentSelect) { showToast('Ya existe un nodo con ese nombre.', 'error'); return; }
+  const parent = parentSelect.value;
+  const cost = parseFloat(document.getElementById('bCost').value) || 0;
+
+  const error = extraEdgeError(b, parent, name);
+  if (error) { showToast(error, 'error'); return; }
+  const ok = await openDialog({
+    title: 'Agregar otro padre',
+    confirmLabel: 'Agregar padre',
+    content: [
+      el('p', {}, ['Ya existe un nodo ', el('strong', { textContent: name }), '. ¿Querés sumar a ',
+        el('strong', { textContent: parent }), ' como otro padre?']),
+      el('div', { className: 'dialog-edge' }, [`${parent} → ${name}`, el('small', { textContent: `costo ${cost}` })]),
+      el('p', { textContent: `${name} conserva su valor heurístico y si es estado solución; esos campos del formulario no se usan.` }),
+    ],
+  });
+  if (!ok) return;
+  b.edges.push({ from: parent, to: name, cost });
+  renderBuilderAll();
+  showToast(`${parent} ahora también es padre de ${name}.`, 'success');
+}
+
+function extraEdgeError(graph, from, to) {
+  if (from === to) return 'Un nodo no puede ser su propio padre.';
+  if (to === graph.root) return 'La raíz no puede tener padre.';
+  if (graph.edges.some(e => e.from === from && e.to === to)) return `${from} ya es padre de ${to}.`;
+  if (reaches(graph, to, from)) return `No se puede: ${from} desciende de ${to}, y la arista ${from} → ${to} formaría un ciclo.`;
+  return null;
+}
+
+function reaches(graph, start, target) {
+  const stack = [start];
+  const seen = new Set();
+  while (stack.length) {
+    const n = stack.pop();
+    if (n === target) return true;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    edgesFrom(graph, n).forEach(e => stack.push(e.to));
+  }
+  return false;
+}
+
 function renderBuilderList() {
   const b = state.builder;
   const el = document.getElementById('builderList');
@@ -986,23 +1096,35 @@ function renderBuilderList() {
   if (!names.length) { el.innerHTML = '<p class="hint">Todavía no agregaste ningún nodo.</p>'; return; }
 
   el.innerHTML = `<table class="builder-table"><thead><tr>
-      <th>Nodo</th><th>h</th><th>Padre</th><th>Costo</th><th>Solución</th><th></th>
+      <th>Nodo</th><th>h</th><th>Padres y costo</th><th>Solución</th><th></th>
     </tr></thead><tbody>
     ${names.map(n => {
-      const edge = b.edges.find(e => e.to === n);
+      const parentEdges = b.edges.filter(e => e.to === n);
+      const canUnlink = parentEdges.length > 1;
+      const parentsHtml = parentEdges.map(e => `<div class="parent-row">
+          <span class="parent-name">${e.from}</span>
+          <input type="number" class="cell-input" data-costfrom="${e.from}" data-costto="${n}" value="${e.cost}" title="Costo ${e.from} → ${n}" />
+          ${canUnlink ? `<button class="unlink-btn" data-unlinkfrom="${e.from}" data-unlinkto="${n}" title="Quitar ${e.from} como padre de ${n}">✕</button>` : ''}
+        </div>`).join('');
       return `<tr>
         <td>${n}${n === b.root ? ' (raíz)' : ''}</td>
         <td><input type="number" class="cell-input" data-hnode="${n}" value="${b.nodes[n].h}" /></td>
-        <td>${edge ? edge.from : '-'}</td>
-        <td>${edge ? `<input type="number" class="cell-input" data-costedge="${n}" value="${edge.cost}" />` : '-'}</td>
+        <td>${parentsHtml || '-'}</td>
         <td><input type="checkbox" data-goalnode="${n}" ${b.goals.includes(n) ? 'checked' : ''} /></td>
-        <td><button class="del-btn" data-del="${n}">✕</button></td>
+        <td><button class="del-btn" data-del="${n}" title="Borrar ${n}">✕</button></td>
       </tr>`;
     }).join('')}
   </tbody></table>`;
 
-  el.querySelectorAll('.del-btn').forEach(btn => {
+  el.querySelectorAll('[data-del]').forEach(btn => {
     btn.addEventListener('click', () => deleteBuilderNode(btn.dataset.del));
+  });
+  el.querySelectorAll('[data-unlinkfrom]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const { unlinkfrom, unlinkto } = btn.dataset;
+      b.edges = b.edges.filter(e => !(e.from === unlinkfrom && e.to === unlinkto));
+      renderBuilderAll();
+    });
   });
   el.querySelectorAll('[data-hnode]').forEach(inp => {
     inp.addEventListener('change', e => {
@@ -1010,9 +1132,10 @@ function renderBuilderList() {
       renderBuilderPreview();
     });
   });
-  el.querySelectorAll('[data-costedge]').forEach(inp => {
+  el.querySelectorAll('[data-costfrom]').forEach(inp => {
     inp.addEventListener('change', e => {
-      const edge = b.edges.find(x => x.to === e.target.dataset.costedge);
+      const { costfrom, costto } = e.target.dataset;
+      const edge = b.edges.find(x => x.from === costfrom && x.to === costto);
       if (edge) edge.cost = parseFloat(e.target.value) || 0;
       renderBuilderPreview();
     });
@@ -1058,7 +1181,7 @@ function renderBuilderPresetSelect() {
 function loadPresetIntoBuilder(id) {
   const preset = PRESETS[id];
   if (!preset) return;
-  state.builder = cloneGraph(preset.graph);
+  state.builder = { ...cloneGraph(preset.graph), name: preset.name, heurMode: preset.heurMode || 'max' };
   renderBuilderAll();
 }
 
@@ -1082,23 +1205,192 @@ function renderBuilderAll() {
   const useBtn = document.getElementById('bUse');
   useBtn.disabled = !state.builder.root || !state.builder.goals.length;
   useBtn.title = useBtn.disabled ? 'Definí al menos un nodo raíz y un estado solución' : '';
+  document.getElementById('ioName').value = state.builder.name || '';
 }
 
 function resetBuilder() {
-  state.builder = { nodes: {}, edges: [], goals: [], root: null };
+  state.builder = emptyBuilder();
   renderBuilderAll();
 }
 
 function useBuilderGraph() {
   const b = state.builder;
   if (!b.root || !b.goals.length) return;
+  clearShareHash();
   state.presetId = null;
+  state.customName = b.name || '';
+  state.heurMode = b.heurMode || 'max';
   state.graph = { root: b.root, nodes: JSON.parse(JSON.stringify(b.nodes)), edges: JSON.parse(JSON.stringify(b.edges)), goals: b.goals.slice() };
   state.goal = state.graph.goals[0];
   switchTab('sim');
   buildSvgSkeleton();
   renderScenarioSelect();
   if (state.algo) runAlgo(); else { showHeuristics(false); showCosts(false); renderTree(null); }
+}
+
+/* =========================================================================
+   IMPORTAR / EXPORTAR — para que los alumnos se compartan ejercicios.
+   Formato: { format, version, name, heurMode, graph: {root,nodes,edges,goals} }.
+   Se puede compartir como archivo .json o como link (#arbol=<base64url>).
+   ========================================================================= */
+
+const SHARE_FORMAT = 'metodos-de-busqueda';
+const SHARE_HASH_KEY = 'arbol';
+// Los nombres de nodo se interpolan en HTML (tabla, selects), así que al
+// venir de un archivo o link ajeno se restringen a letras, números, _ y -.
+const NODE_NAME_RE = /^[\p{L}\p{N}_-]{1,8}$/u;
+const NODE_NAME_HINT = 'El nombre del nodo sólo puede tener letras, números, _ o - (hasta 8 caracteres).';
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+function serializeBuilder(b) {
+  return {
+    format: SHARE_FORMAT,
+    version: 1,
+    name: b.name || '',
+    heurMode: b.heurMode || 'max',
+    graph: { root: b.root, nodes: b.nodes, edges: b.edges, goals: b.goals },
+  };
+}
+
+/* Valida un árbol importado y devuelve un builder limpio. Acepta tanto el
+   formato exportado como un grafo "pelado" ({root,nodes,edges,goals}). */
+function parseSharedTree(data) {
+  const src = data && typeof data === 'object' && data.graph ? data.graph : data;
+  if (!src || typeof src !== 'object') throw new Error('El contenido no es un árbol válido.');
+
+  const { root, nodes, edges = [], goals = [] } = src;
+  if (!nodes || typeof nodes !== 'object' || Array.isArray(nodes)) throw new Error('Falta la lista de nodos.');
+  if (!Array.isArray(edges) || !Array.isArray(goals)) throw new Error('Las aristas y los estados solución tienen que ser listas.');
+
+  const cleanNodes = {};
+  for (const [name, node] of Object.entries(nodes)) {
+    if (!NODE_NAME_RE.test(name)) throw new Error(`Nombre de nodo inválido: "${name}". ${NODE_NAME_HINT}`);
+    const h = Number(node && node.h);
+    if (!Number.isFinite(h)) throw new Error(`El nodo ${name} no tiene un valor heurístico (h) numérico.`);
+    cleanNodes[name] = { h };
+  }
+  if (!cleanNodes[root]) throw new Error('La raíz no es uno de los nodos del árbol.');
+
+  const graph = { root, nodes: cleanNodes, edges: [], goals: [] };
+  for (const edge of edges) {
+    const { from, to } = edge || {};
+    if (!cleanNodes[from] || !cleanNodes[to]) throw new Error(`La arista ${from} → ${to} usa un nodo que no existe.`);
+    const cost = Number(edge.cost ?? 1);
+    if (!Number.isFinite(cost)) throw new Error(`La arista ${from} → ${to} no tiene un costo numérico.`);
+    const error = extraEdgeError(graph, from, to);
+    if (error) throw new Error(error);
+    graph.edges.push({ from, to, cost });
+  }
+  const orphan = Object.keys(cleanNodes).find(n => n !== root && !graph.edges.some(e => e.to === n));
+  if (orphan) throw new Error(`El nodo ${orphan} no tiene padre.`);
+
+  for (const goal of goals) {
+    if (!cleanNodes[goal]) throw new Error(`El estado solución ${goal} no es uno de los nodos.`);
+    if (!graph.goals.includes(goal)) graph.goals.push(goal);
+  }
+
+  return {
+    ...graph,
+    name: typeof data.name === 'string' ? data.name.trim().slice(0, 60) : '',
+    heurMode: data.heurMode === 'min' ? 'min' : 'max',
+  };
+}
+
+function toBase64Url(text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  bytes.forEach(byte => (binary += String.fromCharCode(byte)));
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(encoded) {
+  const binary = atob(encoded.replace(/-/g, '+').replace(/_/g, '/'));
+  return new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0)));
+}
+
+function fileNameFor(name) {
+  const slug = (name || 'arbol').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `${slug || 'arbol'}.json`;
+}
+
+function exportBuilderFile() {
+  const b = state.builder;
+  if (!b.root) { showToast('El diseñador está vacío: agregá al menos el nodo raíz antes de exportar.', 'error'); return; }
+  const json = JSON.stringify(serializeBuilder(b), null, 2);
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileNameFor(b.name);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast(`Árbol exportado como ${link.download}.`, 'success');
+}
+
+async function importBuilderFile(file) {
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    state.builder = parseSharedTree(data);
+    renderBuilderAll();
+    showToast(`Árbol importado${state.builder.name ? `: ${state.builder.name}` : ''}.`, 'success');
+  } catch (err) {
+    showToast(`No se pudo importar el archivo: ${err instanceof SyntaxError ? 'no es un JSON válido.' : err.message}`, 'error');
+  }
+}
+
+async function copyShareLink() {
+  const b = state.builder;
+  if (!b.root) { showToast('El diseñador está vacío: agregá al menos el nodo raíz antes de compartir.', 'error'); return; }
+  const encoded = toBase64Url(JSON.stringify(serializeBuilder(b)));
+  const url = `${location.origin}${location.pathname}#${SHARE_HASH_KEY}=${encoded}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Link copiado. Quien lo abra va a ver este árbol cargado en la simulación.', 'success');
+  } catch {
+    // Sin acceso al portapapeles: se muestra el link seleccionado para copiarlo a mano.
+    const input = el('input', { type: 'text', readOnly: true, value: url });
+    input.addEventListener('focus', () => input.select());
+    openDialog({
+      title: 'Compartir árbol',
+      confirmLabel: 'Listo',
+      cancelLabel: null,
+      focus: input,
+      content: [el('p', { textContent: 'Copiá este link y pasáselo a quien quieras: al abrirlo va a ver el árbol cargado en la simulación.' }), input],
+    });
+  }
+}
+
+function clearShareHash() {
+  if (location.hash.startsWith(`#${SHARE_HASH_KEY}=`)) history.replaceState(null, '', location.pathname + location.search);
+}
+
+/* Si la página se abrió con un link compartido, carga el árbol en el
+   diseñador y, si tiene estados solución, también en la simulación.
+   Devuelve la pestaña que hay que mostrar; no renderiza nada por su cuenta
+   (renderBuilderAll sólo se dispara vía switchTab, ver CLAUDE.md). */
+function loadTreeFromHash() {
+  const prefix = `#${SHARE_HASH_KEY}=`;
+  if (!location.hash.startsWith(prefix)) return 'sim';
+  try {
+    const tree = parseSharedTree(JSON.parse(fromBase64Url(location.hash.slice(prefix.length))));
+    state.builder = tree;
+    if (!tree.goals.length) return 'builder';
+    state.presetId = null;
+    state.customName = tree.name;
+    state.heurMode = tree.heurMode;
+    state.graph = { root: tree.root, nodes: cloneGraph(tree.nodes), edges: cloneGraph(tree.edges), goals: tree.goals.slice() };
+    state.goal = state.graph.goals[0];
+  } catch (err) {
+    showToast(`El link compartido no tiene un árbol válido: ${err.message}`, 'error');
+    clearShareHash();
+  }
+  return 'sim';
 }
 
 /* =========================================================================
@@ -1143,7 +1435,16 @@ document.getElementById('scenarioSelect').addEventListener('change', e => {
   if (e.target.value === 'custom') return;
   loadPreset(e.target.value);
 });
+document.getElementById('ioName').addEventListener('input', e => { state.builder.name = e.target.value.trim(); });
+document.getElementById('ioExport').addEventListener('click', exportBuilderFile);
+document.getElementById('ioLink').addEventListener('click', copyShareLink);
+document.getElementById('ioImport').addEventListener('click', () => document.getElementById('ioFile').click());
+document.getElementById('ioFile').addEventListener('change', e => {
+  importBuilderFile(e.target.files[0]);
+  e.target.value = '';
+});
 
+const initialTab = loadTreeFromHash();
 renderBuilderPresetSelect();
 renderScenarioSelect();
 buildSvgSkeleton();
@@ -1151,3 +1452,4 @@ showHeuristics(false);
 showCosts(false);
 renderTree(null);
 renderStepIndicator();
+if (initialTab === 'builder') switchTab('builder');

@@ -87,6 +87,20 @@ html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
 .builder-table th{text-align:left;color:var(--muted);padding:5px 4px;border-bottom:1px solid var(--border);}
 .builder-table td{padding:5px 4px;border-bottom:1px solid var(--border);}
 .del-btn{background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;}
+.parent-row{display:flex;align-items:center;gap:4px;white-space:nowrap;}
+.parent-row + .parent-row{margin-top:4px;}
+.parent-name{min-width:18px;}
+.parent-row .cell-input{width:40px;}
+.unlink-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0 2px;}
+.unlink-btn:hover{color:var(--red);}
+.builder-table th:nth-child(2), .builder-table td:nth-child(2){width:46px;}
+.builder-table td:nth-child(2) .cell-input{width:42px;}
+.io-buttons{display:flex;gap:6px;}
+.io-buttons .secondary-btn{padding:8px 6px;font-size:12px;}
+.io-name{
+  width:100%;padding:6px 8px;margin-bottom:8px;background:var(--panel2);border:1px solid var(--border);
+  border-radius:6px;color:var(--text);font-size:13px;
+}
 .cell-input{
   width:52px;padding:3px 5px;background:var(--panel2);border:1px solid var(--border);
   border-radius:5px;color:var(--text);font-size:12px;
@@ -193,3 +207,51 @@ tbody tr.solution-row td{color:var(--green);font-weight:600;}
   .layout{flex-direction:column;}
   .sidebar{width:100%;flex:none;border-right:none;border-bottom:1px solid var(--border);}
 }
+
+/* Diálogo y avisos propios (reemplazan alert/confirm/prompt del navegador) */
+.app-dialog{
+  width:min(420px, calc(100vw - 32px));padding:0;border:1px solid var(--border);border-radius:14px;
+  background:var(--panel);color:var(--text);box-shadow:0 20px 50px rgba(0,0,0,.45);
+}
+.app-dialog::backdrop{background:rgba(6,12,18,.6);backdrop-filter:blur(2px);}
+.app-dialog[open]{animation:dialog-in .16s ease-out;}
+.app-dialog-body{margin:0;padding:20px 22px 18px;}
+.app-dialog-title{margin:0 0 10px;font-size:16px;}
+.app-dialog-content{font-size:13px;line-height:1.55;color:var(--muted);}
+.app-dialog-content p{margin:0 0 8px;}
+.app-dialog-content strong{color:var(--text);}
+.app-dialog-content .dialog-edge{
+  display:inline-flex;align-items:center;gap:8px;margin:4px 0 12px;padding:8px 12px;border-radius:8px;
+  background:var(--panel2);border:1px solid var(--border);color:var(--text);font-weight:700;font-size:14px;
+}
+.app-dialog-content .dialog-edge small{color:var(--muted);font-weight:500;font-size:12px;}
+.app-dialog-content input{
+  width:100%;padding:8px 10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;
+  color:var(--text);font-size:12px;font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.app-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+.dialog-btn{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;}
+.dialog-btn.primary{background:var(--accent);color:#06202e;border:1px solid var(--accent);}
+.dialog-btn.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--border);}
+.dialog-btn:hover{filter:brightness(1.08);}
+.dialog-btn[hidden]{display:none;}
+
+.toast-host{
+  position:fixed;right:20px;bottom:20px;z-index:50;display:flex;flex-direction:column;gap:8px;
+  max-width:min(380px, calc(100vw - 32px));pointer-events:none;
+}
+.toast{
+  display:flex;gap:10px;align-items:flex-start;padding:11px 14px;border-radius:10px;font-size:13px;line-height:1.45;
+  background:var(--panel);color:var(--text);border:1px solid var(--border);border-left:4px solid var(--accent);
+  box-shadow:0 10px 30px rgba(0,0,0,.35);pointer-events:auto;animation:toast-in .18s ease-out;
+}
+.toast.error{border-left-color:var(--red);}
+.toast.success{border-left-color:var(--green);}
+.toast-icon{font-weight:800;flex:0 0 auto;}
+.toast.error .toast-icon{color:var(--red);}
+.toast.success .toast-icon{color:var(--green);}
+.toast.info .toast-icon{color:var(--accent);}
+.toast.leaving{opacity:0;transform:translateY(6px);transition:opacity .2s, transform .2s;}
+
+@keyframes dialog-in{from{opacity:0;transform:translateY(8px) scale(.98);}to{opacity:1;transform:none;}}
+@keyframes toast-in{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}

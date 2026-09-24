@@ -25,6 +25,11 @@ y cerrados, y probá tus propios ejercicios.
   cualquiera de los escenarios conocidos, editando heurísticas, costos y
   estados solución al vuelo. Ideal para responder en el momento una pregunta
   de clase ("¿y si este nodo valiera más?").
+  Soporta nodos con más de un padre: escribí el nombre de un nodo que ya
+  existe y elegí el padre nuevo.
+- **Compartir ejercicios**: exportá el árbol del Diseñador como archivo
+  `.json` o como link, e importá el que te pasen. Al abrir un link
+  compartido, el árbol aparece directo en la simulación.
 
 En el árbol, los nodos **solución** siempre se ven en verde (para que el
 objetivo sea obvio desde el arranque), los **sin visitar** en negro, y a

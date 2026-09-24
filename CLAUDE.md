@@ -60,6 +60,13 @@ directamente. Un step tiene la forma:
 { current, isSolution, open: [{node, score?}], closed: [...], message, failed? }
 ```
 
+En las búsquedas ciegas la lista de abiertos tiene **al frente el próximo
+nodo a expandir** (siempre `shift()`): BFS agrega los hijos al final, DFS /
+Generación y Prueba / la mitad "adelante" de Bidireccional los anteponen en
+el sentido elegido. No volver a `pop()` sobre hijos apilados en orden: eso
+invierte el sentido (izq→der terminaba recorriendo A,D,H,L,M en vez de
+A,B,E,I,J como en la PPT).
+
 El stepper (`play/pause/next/prev`) sólo avanza un índice sobre ese arreglo
 y llama a `renderAll()`. Si agregás un algoritmo nuevo, seguí este mismo
 contrato para que la tabla de pasos y el árbol se rendericen solos.
@@ -69,6 +76,17 @@ contrato para que la tabla de pasos y el árbol se rendericen solos.
 del resto de la bibliografía clásica, en esta cátedra **mayor heurística =
 más deseable**, así que A* usa `h - g` (no `h + g`) para que "más alto sigue
 siendo mejor".
+
+## Diseñador e import/export
+
+- Un nodo puede tener varios padres: si en el formulario se escribe un
+  nombre existente, `addExtraParent()` agrega la arista. `extraEdgeError()`
+  valida duplicados, ciclos y que la raíz no tenga padre.
+- `state.builder` lleva además `name` y `heurMode` (se exportan).
+- Formato compartible: `{ format: 'metodos-de-busqueda', version: 1, name,
+  heurMode, graph }`, como `.json` o en el hash `#arbol=<base64url>`.
+  Todo lo importado pasa por `parseSharedTree()`, que valida estructura y
+  restringe los nombres de nodo (se interpolan en HTML).
 
 ## Convenciones visuales (no cambiar sin que te lo pidan)
 
